@@ -26,6 +26,7 @@ open System.Security.Cryptography
 //  - to run tests and to publish documentation on GitHub gh-pages
 //  - for documentation, you also need to edit info in "docs/tools/generate.fsx"
 
+
 // The name of the project
 // (used by attributes in AssemblyInfo, name of a NuGet package and directory in 'src')
 let project = "Paket"
@@ -80,6 +81,27 @@ let tempDir = "temp"
 let buildMergedDir = buildDir @@ "merged"
 
 Environment.CurrentDirectory <- __SOURCE_DIRECTORY__
+
+do // Cheat on AppVeyor and only build on a single project
+    if buildServer = BuildServer.AppVeyor then
+        let hash = (environVarOrFail "APPVEYOR_REPO_COMMIT")
+        let lastChar = hash |> Seq.last
+        let cloudRoutine = ("cloudRoutine", "paket")
+        let steffen = ("SteffenForkmann", "paket")
+        let known = [ cloudRoutine; steffen ]
+        let current = (environVarOrFail "APPVEYOR_ACCOUNT_NAME", environVarOrFail "APPVEYOR_PROJECT_NAME")
+        if known|> Seq.contains current then
+            let buildOn =
+                match lastChar |> Char.ToUpperInvariant with
+                | '0' | '1' | '2' | '3' | '4' | '5' | '6' -> cloudRoutine
+                | '7' | '8' | '9' | 'A' | 'B' | 'C' | 'D' -> steffen
+                | 'F' -> steffen
+                | _ -> failwithf "Expected a valid hex character, but got '%c' as last character of the hash of '%s'" lastChar hash
+            if buildOn <> current then
+                printfn "Not building this commit on '%A' as it will be build on '%A'" current buildOn
+                Environment.Exit 0
+        ()
+
 // Read additional information from the release notes document
 let releaseNotesData = 
     File.ReadAllLines "RELEASE_NOTES.md"
