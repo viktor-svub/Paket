@@ -19,6 +19,7 @@ open Paket.PackageSources
 open Paket.Requirements
 open FSharp.Polyfill
 open System.Runtime.ExceptionServices
+open System.Net.Http.Headers
 
 let private followODataLink auth url =
     let rec followODataLinkSafe (knownVersions:Set<_>) (url:string) =
@@ -261,12 +262,72 @@ let parseODataEntryDetails (url,nugetURL,packageName:PackageName,version:SemVerI
             failwithf "Could not find 'entry' node for package %O %O" packageName version
         | ODataSearchResult.Match entry -> entry
 
+type NuGetSourceServer =
+    | NuGet3 of String 
+    | NuGetGalleryV2
+    // | VisualStudioV2
+    | MyGetV2
+    | ArtifactoryV2
+    | UnknownNuGetV2
+
+let getSourceServerKind (source:NugetSource) =
+    async {
+        try
+            let creds = source.Authentication |> Option.map toCredentials
+            use client = createHttpClient (source.Url, creds)
+            let cancel = Async.DefaultCancellationToken
+            addAcceptHeader client (acceptXml + ",text/html")
+            addHeader client "AcceptCharset" "UTF-8"
+            if verbose then
+                verbosefn "GET '%O' Headers" source.Url
+            use _ = Profile.startCategory Profile.Category.Other
+            use! result = client.GetAsync(source.Url, cancel) |> Async.AwaitTask
+            if result.IsSuccessStatusCode then
+                let mapServer serverName = 
+                    match serverName with
+                    | null ->
+                        traceVerbose "No Server name returned" 
+                        UnknownNuGetV2
+                    | "Microsoft-IIS" -> NuGetGalleryV2
+                    | "Artifactory" -> ArtifactoryV2
+                    | name ->
+                        traceVerbose (sprintf "Unknown server name '%s'" name) 
+                        UnknownNuGetV2
+                let (|HttpHeader|_|) name (headers:HttpHeaders) =
+                    match headers.TryGetValues name with 
+                    | true, values -> Some(values)
+                    | _ -> None                    
+                let mapHaders (headers : HttpHeaders) =
+                    match headers with
+                    | HttpHeader "X-CorrelationId" _ -> NuGetGalleryV2
+                    | HttpHeader "X-Artifactory-Id" _ -> ArtifactoryV2
+                    | HttpHeader "Request-Context" _ -> MyGetV2
+                    | _ -> UnknownNuGetV2
+                let single = 
+                    result.Headers.Server
+                    |> Seq.map (fun s -> s.Product.Name)
+                    |> Seq.map mapServer 
+                    |> Seq.tryFind (fun i -> i <> UnknownNuGetV2)
+                let value = 
+                    match single with
+                    | Some apiKind -> apiKind
+                    | _ -> mapHaders result.Headers 
+                return value
+            else 
+                traceWarnfn "Could not retrieve data from '%s'. %s" 
+                    (source.Url) (result.ReasonPhrase)
+                return UnknownNuGetV2
+        with
+        | exn ->
+            traceErrorfn "Could not retrieve data from '%s'. %O" (source.Url) exn
+            return UnknownNuGetV2 
+    } //|> Async.StartAsTask
 
 let getDetailsFromNuGetViaODataFast isVersionAssumed nugetSource (packageName:PackageName) (version:SemVerInfo) =
     let doBlacklist = not isVersionAssumed
     async {
         let normalizedVersion = version.Normalize()
-        let urls =
+        let mutable urls =
             [ // Nuget feeds should support this.
               // By ID needs to be first because TFS/VSTS https://github.com/fsprojects/Paket/issues/2213
               UrlToTry.From
@@ -298,18 +359,14 @@ let getDetailsFromNuGetViaODataFast isVersionAssumed nugetSource (packageName:Pa
               // We couldn't find by ID, try to search via filter.
               // Start without toLower because of ProGet performance https://github.com/fsprojects/Paket/issues/2466
               UrlToTry.From
-                (UrlId.GetVersion_Filter
-                    ({ LoweredPackageId = false; NormalizedVersion = true },
-                     { ToLower = false; NormalizedVersion = true }))
+                (UrlId.GetVersion_Filter({ LoweredPackageId = false; NormalizedVersion = true }, { ToLower = false; NormalizedVersion = true }))
                 "2_%s/Packages?$filter=(Id eq '%s') and (NormalizedVersion eq '%s')"
                 nugetSource.Url
                 (packageName.ToString())
                 normalizedVersion
               // Try to find with all normalized
               UrlToTry.From
-                (UrlId.GetVersion_Filter
-                    ({ LoweredPackageId = true; NormalizedVersion = true },
-                     { ToLower = true; NormalizedVersion = true }))
+                (UrlId.GetVersion_Filter({ LoweredPackageId = true; NormalizedVersion = true }, { ToLower = true; NormalizedVersion = true }))
                 "2_%s/Packages?$filter=(tolower(Id) eq '%s') and (NormalizedVersion eq '%s')"
                 nugetSource.Url
                 (packageName.CompareString)
@@ -337,6 +394,15 @@ let getDetailsFromNuGetViaODataFast isVersionAssumed nugetSource (packageName:Pa
                 (packageName.CompareString)
                 normalizedVersion
             ]
+        let! serverKind = memoizeAsync getSourceServerKind nugetSource
+        let originalCaseOnly (url : UrlToTry) =
+            match url.UrlId with 
+            | GetVersion_ById byId -> not byId.LoweredPackageId
+            | GetVersion_Filter(filter, getVer) -> not (filter.LoweredPackageId || getVer.ToLower)
+        // add special-cases as needed here 
+        urls <- match serverKind with
+                | ArtifactoryV2 -> urls |> List.where originalCaseOnly 
+                | _ -> urls     
         let handleEntryUrl url =
             async {
                 try
