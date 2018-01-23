@@ -19,6 +19,7 @@ open Paket.PackageSources
 open Paket.Requirements
 open FSharp.Polyfill
 open System.Runtime.ExceptionServices
+open System.Net.Http
 open System.Net.Http.Headers
 
 let private followODataLink auth url =
@@ -263,9 +264,9 @@ let parseODataEntryDetails (url,nugetURL,packageName:PackageName,version:SemVerI
         | ODataSearchResult.Match entry -> entry
 
 type NuGetSourceServer =
-    | NuGet3 of String 
+    // | NuGet3 of String 
     | NuGetGalleryV2
-    // | VisualStudioV2
+    | VisualStudioV2
     | MyGetV2
     | ArtifactoryV2
     | UnknownNuGetV2
@@ -273,16 +274,21 @@ type NuGetSourceServer =
 let getSourceServerKind (source:NugetSource) =
     async {
         try
+            if verbose then verbosefn "Get HEAD '%O'" source.Url
+            use _ = Profile.startCategory Profile.Category.Other
+            
             let creds = source.Authentication |> Option.map toCredentials
+            use request = new HttpRequestMessage(HttpMethod.Head, source.Url)
             use client = createHttpClient (source.Url, creds)
-            let cancel = Async.DefaultCancellationToken
             addAcceptHeader client (acceptXml + ",text/html")
             addHeader client "AcceptCharset" "UTF-8"
-            if verbose then
-                verbosefn "GET '%O' Headers" source.Url
-            use _ = Profile.startCategory Profile.Category.Other
-            use! result = client.GetAsync(source.Url, cancel) |> Async.AwaitTask
-            if result.IsSuccessStatusCode then
+            
+            use! response =
+                client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, 
+                    Async.DefaultCancellationToken) |> Async.AwaitTask
+                
+            if response.IsSuccessStatusCode then
+                
                 let mapServer serverName = 
                     match serverName with
                     | null ->
@@ -291,35 +297,43 @@ let getSourceServerKind (source:NugetSource) =
                     | "Microsoft-IIS" -> NuGetGalleryV2
                     | "Artifactory" -> ArtifactoryV2
                     | name ->
-                        traceVerbose (sprintf "Unknown server name '%s'" name) 
+                        traceVerbose (sprintf "Unknown server '%s'" name) 
                         UnknownNuGetV2
-                let (|HttpHeader|_|) name (headers:HttpHeaders) =
-                    match headers.TryGetValues name with 
-                    | true, values -> Some(values)
-                    | _ -> None                    
+                
+                // server type inference via headers contents
                 let mapHaders (headers : HttpHeaders) =
-                    match headers with
-                    | HttpHeader "X-CorrelationId" _ -> NuGetGalleryV2
-                    | HttpHeader "X-Artifactory-Id" _ -> ArtifactoryV2
-                    | HttpHeader "Request-Context" _ -> MyGetV2
+                    let (|HttpHeader|_|) name (headers:HttpHeaders) =
+                        match headers.TryGetValues name with 
+                        | true, values -> Some(values |> List.ofSeq)
+                        | _ -> None       
+                    match headers with 
+                    | HttpHeader "DataServiceVersion" _ ->
+                        match headers with
+                        | HttpHeader "X-CorrelationId" _ -> NuGetGalleryV2
+                        | HttpHeader "X-Artifactory-Id" _ -> ArtifactoryV2
+                        | HttpHeader "Request-Context" _ -> MyGetV2
+                        | _ -> UnknownNuGetV2 
                     | _ -> UnknownNuGetV2
+                    
                 let single = 
-                    result.Headers.Server
+                    response.Headers.Server
                     |> Seq.map (fun s -> s.Product.Name)
                     |> Seq.map mapServer 
                     |> Seq.tryFind (fun i -> i <> UnknownNuGetV2)
+                    
                 let value = 
                     match single with
                     | Some apiKind -> apiKind
-                    | _ -> mapHaders result.Headers 
+                    | _ -> mapHaders response.Headers
+                     
                 return value
             else 
-                traceWarnfn "Could not retrieve data from '%s'. %s" 
-                    (source.Url) (result.ReasonPhrase)
+                traceWarnfn "Head response from '%s' -> %s" 
+                    (source.Url) (response.ReasonPhrase)
                 return UnknownNuGetV2
         with
         | exn ->
-            traceErrorfn "Could not retrieve data from '%s'. %O" (source.Url) exn
+            traceErrorfn "Cannot get Head from '%s' -> %O" (source.Url) exn
             return UnknownNuGetV2 
     } //|> Async.StartAsTask
 
