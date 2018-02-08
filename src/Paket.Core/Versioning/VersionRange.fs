@@ -329,17 +329,33 @@ type VersionRequirement =
             let pre =
                 match prerelease with
                 | No -> ""
-                | Concrete [x] -> "-" + x
-                | Concrete name -> "-" + List.head name
-                | _ -> "-prerelease"
-
-            let normalize (v:SemVerInfo) =
+                | Concrete [x] -> x
+                | Concrete name -> List.head name
+                | _ -> "prerelease"
+                
+            let normalize2 (v:SemVerInfo) (inclusive:bool) =
                 let s = 
                     let u = v.ToString()
                     let n = v.Normalize()
                     if u.Length > n.Length then u else n // Do not short version since Klondike doesn't understand
+                if s.Contains("-") then s
+                else
+                    let n =
+                        match prerelease with
+                        | No -> ""
+                        | Concrete [x] -> x
+                        | Concrete name -> List.head name
+                        | _ -> "prerelease"
+                    match v.PreRelease with
+                    | Some p when p.Name = n -> s + "-" + n
+                    //| Some p -> p.Name // not sure what to do if they differ
+                    | _ ->
+                        if String.IsNullOrEmpty(n) then s
+                        elif inclusive then s + "-" + n
+                        else s // nothing to append
 
-                if s.Contains("-") then s else s + pre
+            let normalize (v:SemVerInfo) = normalize2 v true                        
+            let normalizeEx (v:SemVerInfo) = normalize2 v false
 
             let str =
                 match range with
@@ -347,9 +363,9 @@ type VersionRequirement =
                     match normalize version with
                     | "0.0.0" -> ""
                     | x  -> x
-                | GreaterThan(version) -> sprintf "(%s,)" (normalize version)
+                | GreaterThan(version) -> sprintf "(%s,)" (normalizeEx version)
                 | Maximum(version) -> sprintf "(,%s]" (normalize version)
-                | LessThan(version) -> sprintf "(,%s)" (normalize version)
+                | LessThan(version) -> sprintf "(,%s)" (normalizeEx version)
                 | Specific(version) -> 
                     let v = normalize version
                     if v.EndsWith "-prerelease" then
@@ -368,18 +384,17 @@ type VersionRequirement =
                         sprintf "[%s]" v
                 | OverrideAll(version) -> sprintf "[%s]" (normalize version)
                 | Range(fromB, from,_to,_toB) ->
-                    let getMinDelimiter (v:VersionRangeBound) =
-                        match v with
+                    let minDelimiter =
+                        match fromB with
                         | VersionRangeBound.Including -> "["
                         | VersionRangeBound.Excluding -> "("
 
-                    let getMaxDelimiter (v:VersionRangeBound) =
-                        match v with
-                        | VersionRangeBound.Including -> "]"
-                        | VersionRangeBound.Excluding -> ")"
+                    let maxDelimiter, upperNorm =
+                        match _toB with
+                        | VersionRangeBound.Including -> "]", normalize
+                        | VersionRangeBound.Excluding -> ")", normalizeEx
 
-                    sprintf "%s%s,%s%s" (getMinDelimiter fromB) (normalize from) (normalize _to) (getMaxDelimiter _toB)
-
+                    sprintf "%s%s,%s%s" minDelimiter (normalize from) (upperNorm _to) maxDelimiter
 
             match str with
             | "0" -> ""

@@ -32,120 +32,170 @@ let ``can order twiddle-wakka``() =
 
 [<Test>]
 let ``can parse twiddle-wakka with prerelease``() = 
-    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0 prerelease" 
+    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0 prerelease"
+    
+    let included = SemVer.Parse("6.0.0")
+    let excluded = SemVer.Parse("6.1.0")
 
     req
     |> shouldEqual 
         (VersionRequirement.VersionRequirement(
-            VersionRange.Range(VersionRangeBound.Including,SemVer.Parse("6.0.0"),SemVer.Parse("6.1.0"),VersionRangeBound.Excluding),
+            VersionRange.Range(VersionRangeBound.Including,included,excluded,VersionRangeBound.Excluding),
             PreReleaseStatus.All))
 
-    req.FormatInNuGetSyntax()
-    |> shouldEqual "[6.0.0-prerelease,6.1.0-prerelease)"
+    req.IsInRange(included) |> Assert.IsTrue
+    req.IsInRange(excluded) |> Assert.IsFalse
+    req.IsInRange(SemVer.Parse "6.0.9-beta.8") |> Assert.IsTrue
+    
+    req.FormatInNuGetSyntax() |> shouldEqual "[6.0.0-prerelease,6.1.0)"
     
 [<Test>]
 let ``can parse twiddle-wakka with embedded prerelease``() = 
-    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0-beta" 
+    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0-beta"
+    
+    let included = SemVer.Parse("6.0.0-beta") 
+    let excluded = SemVer.Parse("6.1.0")
 
     req
     |> shouldEqual 
         (VersionRequirement.VersionRequirement(
-            VersionRange.Range(VersionRangeBound.Including,SemVer.Parse("6.0.0-beta"),SemVer.Parse("6.1.0"),VersionRangeBound.Excluding),
+            VersionRange.Range(VersionRangeBound.Including,included,excluded,VersionRangeBound.Excluding),
             PreReleaseStatus.Concrete ["beta"]))
 
-    req.FormatInNuGetSyntax()
-    |> shouldEqual "[6.0.0-beta,6.1.0-beta)"
+    req.IsInRange(included) |> Assert.IsTrue
+    req.IsInRange(excluded) |> Assert.IsFalse
+    req.IsInRange(SemVer.Parse "6.0.9-beta.8") |> Assert.IsTrue
+    
+    req.FormatInNuGetSyntax() |> shouldEqual "[6.0.0-beta,6.1.0)"
     
 [<Test>]
 let ``can parse twiddle-wakka with embedded semver2 prerelease``() = 
-    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0-beta.1" 
+    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0-beta.1"
+    
+    let included = SemVer.Parse("6.0.0-beta.1")
+    let excluded = SemVer.Parse("6.1.0")
 
     req
     |> shouldEqual 
         (VersionRequirement.VersionRequirement(
-            VersionRange.Range(VersionRangeBound.Including,SemVer.Parse("6.0.0-beta.1"),SemVer.Parse("6.1.0"),VersionRangeBound.Excluding),
+            VersionRange.Range(VersionRangeBound.Including,included,excluded,VersionRangeBound.Excluding),
             PreReleaseStatus.Concrete ["beta"]))
 
-    req.FormatInNuGetSyntax()
-    |> shouldEqual "[6.0.0-beta.1,6.1.0-beta)"
+    req.IsInRange(included) |> Assert.IsTrue
+    req.IsInRange(excluded) |> Assert.IsFalse
+    req.IsInRange(SemVer.Parse "6.0.9-beta.8") |> Assert.IsTrue
+    
+    req.FormatInNuGetSyntax() |> shouldEqual "[6.0.0-beta.1,6.1.0)"
 
 [<Test>]
 let ``can parse twiddle-wakka with specific prerelease``() = 
-    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0 beta" 
+    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0 beta"
+    
+    let included = SemVer.Parse("6.0.0")
+    let excluded = SemVer.Parse("6.1.0")
 
     req
     |> shouldEqual 
         (VersionRequirement.VersionRequirement(
-            VersionRange.Range(VersionRangeBound.Including,SemVer.Parse("6.0.0"),SemVer.Parse("6.1.0"),VersionRangeBound.Excluding),
+            VersionRange.Range(VersionRangeBound.Including,included,excluded,VersionRangeBound.Excluding),
             PreReleaseStatus.Concrete ["beta"]))
 
-    req.FormatInNuGetSyntax()
-    |> shouldEqual "[6.0.0-beta,6.1.0-beta)"
+    req.IsInRange(included) |> Assert.IsTrue
+    req.IsInRange(excluded) |> Assert.IsFalse
+    req.IsInRange(SemVer.Parse "6.0.9-beta.8") |> Assert.IsTrue
+    
+    req.FormatInNuGetSyntax() |> shouldEqual "[6.0.0-beta,6.1.0)"
     
 [<Test>]
 let ``can parse twiddle-wakka with specific embedded prerelease``() = 
-    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0-beta" 
+    let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0-beta"
+    
+    let included = SemVer.Parse("6.0.0-beta") 
+    let excluded = SemVer.Parse("6.1.0")
 
     req
     |> shouldEqual 
         (VersionRequirement.VersionRequirement(
-            VersionRange.Range(VersionRangeBound.Including,SemVer.Parse("6.0.0-beta"),SemVer.Parse("6.1.0"),VersionRangeBound.Excluding),
+            VersionRange.Range(VersionRangeBound.Including,included,excluded,VersionRangeBound.Excluding),
             PreReleaseStatus.Concrete ["beta"]))
 
-    req.FormatInNuGetSyntax()
-    |> shouldEqual "[6.0.0-beta,6.1.0-beta)"
+    req.IsInRange(included) |> Assert.IsTrue
+    req.IsInRange(excluded) |> Assert.IsFalse
+    req.IsInRange(SemVer.Parse "6.0.9-beta.8") |> Assert.IsTrue
+    
+    req.FormatInNuGetSyntax() |> shouldEqual "[6.0.0-beta,6.1.0)"
     
 [<Test>]
 let ``can parse twiddle-wakka with specific embedded semver2 prerelease``() = 
     let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0-beta.7" 
 
+    let included = SemVer.Parse "6.0.0-beta.7"
+    let excluded = SemVer.Parse "6.1.0"
+
     req
     |> shouldEqual 
         (VersionRequirement.VersionRequirement(
-            VersionRange.Range(VersionRangeBound.Including,SemVer.Parse("6.0.0-beta.7"),SemVer.Parse("6.1.0"),VersionRangeBound.Excluding),
+            VersionRange.Range(VersionRangeBound.Including,included,excluded,VersionRangeBound.Excluding),
             PreReleaseStatus.Concrete ["beta"]))
 
-    req.FormatInNuGetSyntax()
-    |> shouldEqual "[6.0.0-beta.7,6.1.0-beta)"
+    req.IsInRange(included) |> Assert.IsTrue
+    req.IsInRange(excluded) |> Assert.IsFalse
+    req.IsInRange(SemVer.Parse "6.0.9-beta.8") |> Assert.IsTrue
+    
+    req.FormatInNuGetSyntax() |> shouldEqual "[6.0.0-beta.7,6.1.0)"
 
 [<Test>]
 let ``can parse doubled prerelease``() = 
     let req = DependenciesFileParser.parseVersionRequirement "0.33.0-beta prerelease" 
+    
+    let included = SemVer.Parse("0.33.0-beta")
 
     req
     |> shouldEqual 
         (VersionRequirement.VersionRequirement(
-            VersionRange.Specific(SemVer.Parse("0.33.0-beta")),
+            VersionRange.Specific(included),
             PreReleaseStatus.All))
 
     req.FormatInNuGetSyntax()
     |> shouldEqual "[0.33.0-beta]"
     
+    req.IsInRange(included) |> Assert.IsTrue
+    
 [<Test>]
 let ``can parse doubled specific prerelease``() = 
     let req = DependenciesFileParser.parseVersionRequirement "0.33.0-beta.1 beta" 
 
+    let included = SemVer.Parse("0.33.0-beta.1")
+    
     req
     |> shouldEqual 
         (VersionRequirement.VersionRequirement(
-            VersionRange.Specific(SemVer.Parse("0.33.0-beta.1")),
+            VersionRange.Specific(included),
             PreReleaseStatus.Concrete ["beta"]))
 
     req.FormatInNuGetSyntax()
     |> shouldEqual "[0.33.0-beta.1]"
     
+    req.IsInRange(included) |> Assert.IsTrue
+    
 [<Test>]
 let ``can parse twiddle-wakka with specific embedded and doubled semver2 prerelease``() = 
     let req = DependenciesFileParser.parseVersionRequirement "~> 6.0.0-beta.7 beta" 
 
+    let included = SemVer.Parse "6.0.0-beta.7"
+    let excluded = SemVer.Parse "6.1.0"
+
     req
     |> shouldEqual 
         (VersionRequirement.VersionRequirement(
-            VersionRange.Range(VersionRangeBound.Including,SemVer.Parse("6.0.0-beta.7"),SemVer.Parse("6.1.0"),VersionRangeBound.Excluding),
+            VersionRange.Range(VersionRangeBound.Including,included,excluded,VersionRangeBound.Excluding),
             PreReleaseStatus.Concrete ["beta"]))
 
-    req.FormatInNuGetSyntax()
-    |> shouldEqual "[6.0.0-beta.7,6.1.0-beta)"
+    req.IsInRange(included) |> Assert.IsTrue
+    req.IsInRange(excluded) |> Assert.IsFalse
+    req.IsInRange(SemVer.Parse "6.0.9-beta.8") |> Assert.IsTrue
+    
+    req.FormatInNuGetSyntax() |> shouldEqual "[6.0.0-beta.7,6.1.0)"
 
 [<Test>]
 let ``can order simple at least requirements in package requirement``() = 
