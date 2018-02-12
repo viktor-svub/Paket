@@ -336,7 +336,7 @@ let getDetailsFromNuGetViaODataFast isVersionAssumed nugetSource (packageName:Pa
                 nugetSource.Url
                 (packageName.CompareString)
                 normalizedVersion
-            ]
+            ] |> List.distinctBy (fun i -> i.InstanceUrl) // deduplicate
         let handleEntryUrl url =
             async {
                 try

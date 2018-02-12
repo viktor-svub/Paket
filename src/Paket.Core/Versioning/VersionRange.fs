@@ -329,7 +329,13 @@ type VersionRequirement =
                 
             let normalize2 (v:SemVerInfo) (inclusive:bool) =
                 // Do not short version since Klondike doesn't understand
-                let str = v.AsVersionString
+                let normal = v.Normalize()
+                let origin = v.AsVersionString
+                let str = // prefer original version, normalize to longer
+                    if normal.Split([|'-'|]).[0].Length > 
+                       origin.Split([|'-'|]).[0].Length 
+                    then normal 
+                    else origin 
                 let pre =
                     match prerelease with
                     | No -> ""
