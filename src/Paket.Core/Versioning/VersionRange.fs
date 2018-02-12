@@ -326,33 +326,22 @@ type VersionRequirement =
     member this.FormatInNuGetSyntax() =
         match this with
         | VersionRequirement(range,prerelease) ->
-            let pre =
-                match prerelease with
-                | No -> ""
-                | Concrete [x] -> x
-                | Concrete name -> List.head name
-                | _ -> "prerelease"
                 
             let normalize2 (v:SemVerInfo) (inclusive:bool) =
-                let s = 
-                    let u = v.ToString()
-                    let n = v.Normalize()
-                    if u.Length > n.Length then u else n // Do not short version since Klondike doesn't understand
-                if s.Contains("-") then s
-                else
-                    let n =
-                        match prerelease with
-                        | No -> ""
-                        | Concrete [x] -> x
-                        | Concrete name -> List.head name
-                        | _ -> "prerelease"
-                    match v.PreRelease with
-                    | Some p when p.Name = n -> s + "-" + n
-                    //| Some p -> p.Name // not sure what to do if they differ
-                    | _ ->
-                        if String.IsNullOrEmpty(n) then s
-                        elif inclusive then s + "-" + n
-                        else s // nothing to append
+                // Do not short version since Klondike doesn't understand
+                let str = v.AsVersionString
+                let pre =
+                    match prerelease with
+                    | No -> ""
+                    | Concrete [x] -> x
+                    | Concrete name -> List.head name
+                    | _ -> "prerelease"
+                match v.PreRelease with
+                | Some p -> str // prefer original
+                | None ->
+                    if String.IsNullOrEmpty(pre) then str
+                    elif inclusive then str + "-" + pre
+                    else str // nothing to append
 
             let normalize (v:SemVerInfo) = normalize2 v true                        
             let normalizeEx (v:SemVerInfo) = normalize2 v false

@@ -153,6 +153,16 @@ type SemVerInfo =
     member x.AsString
         with get() = x.ToString()
         
+    member x.AsVersionString =
+        let normalized = x.Normalize()
+        match x.Original with
+        | Some version -> // prefer original string, as normalized may not be found
+            let unparsed = version.Split([|'+'|]).[0].Trim().Trim([|'.'; '-'; '*'|])
+            if unparsed.Length < normalized.Length then
+                normalized // longer normalized version must be used to be compliant
+            else unparsed
+        | None -> normalized
+        
     member x.Equals(y) =
         x.Major = y.Major && x.Minor = y.Minor && x.Patch = y.Patch && x.Build = y.Build && x.PreRelease = y.PreRelease
 
